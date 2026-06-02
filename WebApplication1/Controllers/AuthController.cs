@@ -32,7 +32,11 @@ namespace WebApplication1.Controllers
             if (cred == null)
                 return BadRequest("Invalid email or password.");
 
+            if (!BCrypt.Net.BCrypt.Verify(req.Password, cred.Password))
+                return BadRequest("Wrong Password");
+
             return Ok("Login successful.");
         }
+
     }
 }

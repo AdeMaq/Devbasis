@@ -29,16 +29,18 @@ namespace WebApplication1.Services
 
         public async Task<User> RegisterAsync(string username, string email, string password)
         {
+            string passwordHash=BCrypt.Net.BCrypt.HashPassword(password);
             var user = new User
             {
                 Username = username.Trim(),
                 Email = email.Trim().ToLower(),
-                Password = password
+                Password = passwordHash
             };
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
             return user;
         }
+
 
         public async Task<User?> LoginAsync(string email, string password)
         {

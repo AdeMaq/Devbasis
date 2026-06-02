@@ -1,0 +1,82 @@
+Step 1 — Install packages (backend)
+bashdotnet add package BCrypt.Net-Next
+dotnet add package FluentValidation.AspNetCore
+
+Step 2 — Password hashing in UserService.cs
+Replace the two methods:
+csharppublic async Task<User> RegisterAsync(string username, string email, string password)
+{
+    var user = new User
+    {
+        Username = username.Trim(),
+        Email    = email.Trim().ToLower(),
+        Password = BCrypt.Net.BCrypt.HashPassword(password)   // ← hash it
+    };
+    _context.Users.Add(user);
+    await _context.SaveChangesAsync();
+    return user;
+}
+
+public async Task<User?> LoginAsync(string email, string password)
+{
+    var user = await GetByEmailAsync(email.Trim().ToLower());
+    if (user == null || !BCrypt.Net.BCrypt.Verify(password, user.Password))  // ← verify
+        return null;
+    return user;
+}
+
+Step 3 — FluentValidation validators
+Create Validators/UserDtoValidator.cs:
+csharpusing FluentValidation;
+using WebApplication1.Api.DTOs;
+
+public class RegisterDtoValidator : AbstractValidator<UserDto>
+{
+    public RegisterDtoValidator()
+    {
+        RuleFor(x => x.Username)
+            .NotEmpty().WithMessage("Name is required.")
+            .MinimumLength(2).MaximumLength(50);
+
+        RuleFor(x => x.Email)
+            .NotEmpty()
+            .EmailAddress().WithMessage("A valid email is required.");
+
+        RuleFor(x => x.Password)
+            .NotEmpty()
+            .MinimumLength(8).WithMessage("Password must be at least 8 characters.")
+            .Matches("[A-Z]").WithMessage("Must contain an uppercase letter.")
+            .Matches("[0-9]").WithMessage("Must contain a digit.");
+    }
+}
+
+public class LoginDtoValidator : AbstractValidator<UserDto>
+{
+    public LoginDtoValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress();
+        RuleFor(x => x.Password).NotEmpty();
+    }
+}
+
+Step 4 — Register validators in Program.cs
+csharp// Add after builder.Services.AddControllers()
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterDtoValidator>();
+With AddFluentValidationAutoValidation(), ASP.NET will automatically return a 400 with field-level error messages before your controller code even runs — no manual ModelState.IsValid checks needed.
+
+Step 5 — Frontend: add minLength to the password input (Login.jsx / Signup.jsx)
+jsx<input
+  type={showPassword ? 'text' : 'password'}
+  placeholder="••••••••"
+  minLength={8}
+  value={formData.password}
+  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+  required
+/>
+This gives instant browser-native feedback before a network round-trip.
+
+One thing to watch
+Your User model has Password as a plain string with no [JsonIgnore]. Once you're hashing, the hash is safe to store, but you should still add [JsonIgnore] so the hash is never serialized back to the client in any future endpoint that returns the user object:
+csharp[JsonIgnore]
+public string Password { get; set; } = string.Empty;
